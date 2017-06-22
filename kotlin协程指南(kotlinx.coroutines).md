@@ -921,8 +921,45 @@ fun main(args: Array<String>) = runBlocking<Unit> {
 
 在这个示例中，我们不得不取消这些协程，因为之前介绍过，“协程类似于守护线程”，在一个大型应用中，如果我们不在需要使用它，我们需要停掉我们的管道。另一方面，我们可以将管道协程作为一个子协程进行使用。
 
+### 管道和素数
 
+让我们使用协程和管道做一个示例，我们来生成素数，这是一个比较极端的例子。我们需要在一个无限的数据序列中开始操作。这里我们引入了一个确定的上下文环境参数，这将使得调用者可以控制我们的协程在何处运行。
 
+```java
+fun numbersFrom(context: CoroutineContext, start: Int) = produce<Int>(context) {
+    var x = start
+    while (true) send(x++) // infinite stream of integers from start
+}
+```
+
+之后的管道阶段就是过滤接收到的数值，将所有可以被给定的素数整除的数据全部移除。
+
+```java
+fun filter(context: CoroutineContext, numbers: ReceiveChannel<Int>, prime: Int) = produce<Int>(context) {
+    for (x in numbers) if (x % prime != 0) send(x)
+}
+```
+
+现在，我们通过启动从2开始的数字流来构建我们的管道，从当前通道获取一个素数，并为每个素数启动新的管道阶段。
+
+```java
+numbersFrom(2) -> filter(2) -> filter(3) -> filter(5) -> filter(7) ...
+```
+
+下边的代码示例打印了前10个素数，整个管道过程将会在主线程的上下文环境中运行：
+
+```java
+fun main(args: Array<String>) = runBlocking<Unit> {
+    var cur = numbersFrom(context, 2)
+    for (i in 1..10) {
+        val prime = cur.receive()
+        println(prime)
+        cur = filter(context, cur, prime)
+    }
+}
+```
+
+> 你可以在[这里](https://github.com/Kotlin/kotlinx.coroutines/blob/master/kotlinx-coroutines-core/src/test/kotlin/guide/example-channel-05.kt)获取完整的示例代码
 
 
 
